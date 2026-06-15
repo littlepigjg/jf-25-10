@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   ipcRenderer.send('get-thresholds');
   ipcRenderer.send('get-logging-status');
   ipcRenderer.send('get-alert-history');
+  ipcRenderer.send('get-notification-settings');
   setDefaultDates();
 });
 
@@ -285,6 +286,14 @@ function bindEvents() {
   document.getElementById('maxFileSize').addEventListener('input', (e) => {
     document.getElementById('maxFileSizeValue').textContent = e.target.value + ' MB';
   });
+
+  document.getElementById('notificationCooldown').addEventListener('input', (e) => {
+    document.getElementById('notificationCooldownValue').textContent = e.target.value + '秒';
+  });
+
+  document.getElementById('btnTestNotification').addEventListener('click', () => {
+    ipcRenderer.send('test-notification');
+  });
 }
 
 function switchTab(tab) {
@@ -374,6 +383,53 @@ ipcRenderer.on('thresholds-data', (event, thresholds) => {
 ipcRenderer.on('thresholds-updated', (event, thresholds) => {
   showToast('success', '设置已保存');
   closeSettings();
+});
+
+ipcRenderer.on('notification-settings', (event, settings) => {
+  const enabledCheckbox = document.getElementById('notificationEnabled');
+  const levelSelect = document.getElementById('notificationLevel');
+  const cooldownSlider = document.getElementById('notificationCooldown');
+  const cooldownValue = document.getElementById('notificationCooldownValue');
+  const supportHint = document.getElementById('notificationSupportHint');
+
+  if (enabledCheckbox) enabledCheckbox.checked = settings.enabled;
+  if (levelSelect) levelSelect.value = settings.minLevel;
+  if (cooldownSlider) {
+    const cooldownSec = Math.round(settings.cooldownMs / 1000);
+    cooldownSlider.value = cooldownSec;
+    cooldownValue.textContent = cooldownSec + '秒';
+  }
+  
+  if (supportHint) {
+    if (settings.supported) {
+      supportHint.innerHTML = '<span style="color: var(--success-color);">✓ 系统支持桌面通知</span>';
+    } else {
+      supportHint.innerHTML = '<span style="color: var(--warning-color);">⚠ 当前系统不支持桌面通知，将仅显示应用内告警</span>';
+      if (enabledCheckbox) enabledCheckbox.disabled = true;
+    }
+  }
+});
+
+ipcRenderer.on('notification-settings-updated', (event, settings) => {
+});
+
+ipcRenderer.on('test-notification-result', (event, result) => {
+  if (result.success) {
+    showToast('success', '测试通知已发送，请查看系统通知');
+  } else {
+    showToast('error', `测试通知发送失败: ${result.error || '未知错误'}`);
+  }
+});
+
+ipcRenderer.on('notification-clicked', (event, alertType) => {
+  switchTab('realtime');
+  const alertPanel = document.querySelector('.alerts-panel');
+  if (alertPanel) {
+    alertPanel.style.animation = 'pulse 1s ease';
+    setTimeout(() => {
+      alertPanel.style.animation = '';
+    }, 1000);
+  }
 });
 
 ipcRenderer.on('export-success', (event, data) => {
@@ -720,6 +776,7 @@ function renderFiles(files) {
 
 function openSettings() {
   ipcRenderer.send('get-thresholds');
+  ipcRenderer.send('get-notification-settings');
   document.getElementById('settingsModal').classList.add('active');
 }
 
@@ -738,8 +795,15 @@ function saveSettings() {
   
   const logIntervalSec = parseInt(document.getElementById('logInterval').value);
   
+  const notificationSettings = {
+    enabled: document.getElementById('notificationEnabled').checked,
+    minLevel: document.getElementById('notificationLevel').value,
+    cooldownMs: parseInt(document.getElementById('notificationCooldown').value) * 1000
+  };
+  
   ipcRenderer.send('update-thresholds', thresholds);
   ipcRenderer.send('set-log-interval', logIntervalSec * 1000);
+  ipcRenderer.send('update-notification-settings', notificationSettings);
 }
 
 function openExportModal() {

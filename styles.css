@@ -883,6 +883,13 @@ body {
   color: var(--text-primary);
 }
 
+.setting-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
 .file-actions {
   display: flex;
   gap: 8px;

@@ -234,6 +234,34 @@
           </div>
           
           <div class="settings-section">
+            <h3>桌面通知</h3>
+            <div class="setting-item">
+              <label class="checkbox-label">
+                <input type="checkbox" id="notificationEnabled" checked>
+                启用桌面通知
+              </label>
+              <div class="setting-hint" id="notificationSupportHint">正在检测通知支持...</div>
+            </div>
+            <div class="setting-item">
+              <label>通知级别</label>
+              <select id="notificationLevel">
+                <option value="warning">所有告警</option>
+                <option value="critical" selected>仅严重告警</option>
+              </select>
+              <div class="setting-hint">选择触发桌面通知的最低告警级别</div>
+            </div>
+            <div class="setting-item">
+              <label>通知冷却时间 (秒)</label>
+              <input type="range" id="notificationCooldown" min="10" max="300" step="10" value="30">
+              <span class="threshold-value" id="notificationCooldownValue">30秒</span>
+              <div class="setting-hint">同一类型告警的最小通知间隔，避免频繁打扰</div>
+            </div>
+            <div class="setting-item">
+              <button class="btn btn-outline btn-sm" id="btnTestNotification">发送测试通知</button>
+            </div>
+          </div>
+          
+          <div class="settings-section">
             <h3>日志设置</h3>
             <div class="setting-item">
               <label>日志写入间隔 (秒)</label>

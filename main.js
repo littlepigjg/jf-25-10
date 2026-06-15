@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Notification } = require('electron');
 const si = require('systeminformation');
 const path = require('path');
 const LogManager = require('./log-manager');
@@ -18,6 +18,21 @@ let splitStrategy = 'daily';
 let maxFileSize = 50 * 1024 * 1024;
 
 let logManager = null;
+
+let notificationSettings = {
+  enabled: true,
+  minLevel: 'critical',
+  cooldownMs: 30000
+};
+
+let lastNotificationTime = {};
+
+const alertIcons = {
+  cpu: '🔥',
+  memory: '🧠',
+  disk: '💾',
+  network: '🌐'
+};
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -199,6 +214,128 @@ function checkAlerts(data) {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('alerts', alerts);
     }
+    
+    sendDesktopNotifications(alerts);
+  }
+}
+
+function getNotificationPermission() {
+  if (!Notification.isSupported()) {
+    return 'unsupported';
+  }
+  return Notification.isSupported() ? 'granted' : 'denied';
+}
+
+function shouldSendNotification(alert) {
+  if (!notificationSettings.enabled) {
+    return false;
+  }
+  
+  if (!Notification.isSupported()) {
+    return false;
+  }
+  
+  const levelOrder = { warning: 1, critical: 2 };
+  const minLevelOrder = levelOrder[notificationSettings.minLevel] || 2;
+  const alertLevelOrder = levelOrder[alert.level] || 1;
+  
+  if (alertLevelOrder < minLevelOrder) {
+    return false;
+  }
+  
+  const now = Date.now();
+  const lastTime = lastNotificationTime[alert.type] || 0;
+  if (now - lastTime < notificationSettings.cooldownMs) {
+    return false;
+  }
+  
+  return true;
+}
+
+function sendDesktopNotifications(alerts) {
+  const criticalAlerts = alerts.filter(a => shouldSendNotification(a));
+  
+  if (criticalAlerts.length === 0) {
+    return;
+  }
+  
+  const alert = criticalAlerts[0];
+  const now = Date.now();
+  lastNotificationTime[alert.type] = now;
+  
+  const icon = alertIcons[alert.type] || '⚠️';
+  const levelLabel = alert.level === 'critical' ? '严重告警' : '告警';
+  const timeStr = new Date(alert.timestamp).toLocaleString('zh-CN');
+  
+  const title = `${icon} ${levelLabel} - ${getAlertTypeName(alert.type)}`;
+  const body = `当前值: ${alert.value}% (阈值: ${alert.threshold}%)\n触发时间: ${timeStr}`;
+  
+  try {
+    const notification = new Notification({
+      title: title,
+      body: body,
+      silent: false,
+      urgency: alert.level === 'critical' ? 'critical' : 'normal',
+      timeoutType: 'default'
+    });
+    
+    notification.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore();
+        }
+        mainWindow.show();
+        mainWindow.focus();
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('notification-clicked', alert.type);
+        }
+      }
+    });
+    
+    notification.show();
+  } catch (err) {
+    console.error('桌面通知发送失败:', err);
+  }
+}
+
+function getAlertTypeName(type) {
+  const names = {
+    cpu: 'CPU使用率',
+    memory: '内存使用率',
+    disk: '磁盘使用率',
+    network: '网络流量'
+  };
+  return names[type] || type;
+}
+
+function sendTestNotification() {
+  if (!Notification.isSupported()) {
+    return { success: false, error: '当前系统不支持桌面通知' };
+  }
+  
+  try {
+    const notification = new Notification({
+      title: '🔔 系统监控 - 测试通知',
+      body: '这是一条测试通知，桌面通知功能正常工作！\n点击可跳转到监控界面。',
+      silent: false,
+      urgency: 'normal'
+    });
+    
+    notification.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) {
+          mainWindow.restore();
+        }
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+    
+    notification.show();
+    return { success: true };
+  } catch (err) {
+    console.error('测试通知发送失败:', err);
+    return { success: false, error: err.message };
   }
 }
 
@@ -388,4 +525,35 @@ ipcMain.on('delete-old-logs', async (event, daysToKeep) => {
 
 ipcMain.on('get-history-data', (event) => {
   event.reply('history-data', []);
+});
+
+ipcMain.on('get-notification-settings', (event) => {
+  const supported = Notification.isSupported();
+  event.reply('notification-settings', {
+    ...notificationSettings,
+    supported
+  });
+});
+
+ipcMain.on('update-notification-settings', (event, settings) => {
+  notificationSettings = {
+    ...notificationSettings,
+    ...settings
+  };
+  event.reply('notification-settings-updated', {
+    ...notificationSettings,
+    supported: Notification.isSupported()
+  });
+});
+
+ipcMain.on('test-notification', (event) => {
+  const result = sendTestNotification();
+  event.reply('test-notification-result', result);
+});
+
+ipcMain.on('get-notification-permission', (event) => {
+  event.reply('notification-permission', {
+    supported: Notification.isSupported(),
+    permission: getNotificationPermission()
+  });
 });
